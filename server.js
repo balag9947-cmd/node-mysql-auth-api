@@ -251,6 +251,106 @@ app.delete("/users/:id", async (req, res) => {
   }
 });
 
+// 8. PATCH: Update specific fields (Partial Update)
+app.patch("/users/:id", async (req, res) => {
+  const { id } = req.params;
+  const { email, mobile, gender } = req.body;
+
+  // Ensure at least one field is provided
+  if (!email && !mobile && !gender) {
+    return res.status(400).json({ error: "Please provide email, mobile, or gender to update" });
+  }
+
+  const updates = [];
+  const values = [];
+
+  if (email) {
+    if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: "Invalid email" });
+    updates.push("EMAIL = ?");
+    values.push(email);
+  }
+
+  if (mobile) {
+    if (!/^\d{10}$/.test(mobile)) return res.status(400).json({ error: "Mobile must be 10 digits" });
+    updates.push("MOBILE = ?");
+    values.push(mobile);
+  }
+
+  if (gender) {
+    const genderLower = gender.toLowerCase();
+    if (!['male', 'female'].includes(genderLower)) return res.status(400).json({ error: "Gender must be male or female" });
+    updates.push("GENDER = ?");
+    values.push(genderLower);
+  }
+
+  try {
+    // Check if new email/mobile collides with a DIFFERENT user
+    if (email || mobile) {
+      const [existing] = await pool.query(
+        "SELECT EMAIL, MOBILE FROM USERS WHERE (EMAIL = ? OR MOBILE = ?) AND ID != ?",
+        [email || null, mobile || null, id]
+      );
+      if (existing.length > 0) {
+        return res.status(409).json({ error: "Email or Mobile already in use by another user" });
+      }
+    }
+
+    // Add the user ID to the end of the values array for the WHERE clause
+    values.push(id);
+    const query = `UPDATE USERS SET ${updates.join(", ")} WHERE ID = ?`;
+    
+    const [result] = await pool.query(query, values);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ message: "User updated successfully via PATCH", updatedFields: Object.keys(req.body) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// 9. PUT: Replace entire user profile (Full Update)
+app.put("/users/:id", async (req, res) => {
+  const { id } = req.params;
+  const { username, email, mobile, gender, acceptedTerms } = req.body;
+
+  // PUT requires ALL fields
+  if (!username || !email || !mobile || !gender || acceptedTerms === undefined) {
+    return res.status(400).json({ error: "PUT requires all fields: username, email, mobile, gender, acceptedTerms" });
+  }
+
+  const genderLower = gender.toLowerCase();
+  if (!['male', 'female'].includes(genderLower)) return res.status(400).json({ error: "Invalid gender" });
+  if (!/^\d{10}$/.test(mobile)) return res.status(400).json({ error: "Mobile must be 10 digits" });
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: "Invalid email" });
+
+  try {
+    // Check if the new data collides with a DIFFERENT user
+    const [existing] = await pool.query(
+      "SELECT USERNAME, EMAIL, MOBILE FROM USERS WHERE (USERNAME = ? OR EMAIL = ? OR MOBILE = ?) AND ID != ?",
+      [username, email, mobile, id]
+    );
+
+    if (existing.length > 0) {
+       return res.status(409).json({ error: "Username, Email, or Mobile already taken by another user" });
+    }
+
+    const [result] = await pool.query(
+      "UPDATE USERS SET USERNAME = ?, EMAIL = ?, MOBILE = ?, GENDER = ?, ACCEPTED_TERMS = ? WHERE ID = ?",
+      [username, email, mobile, genderLower, acceptedTerms, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ message: "User completely replaced successfully via PUT" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Dynamic Port for Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
