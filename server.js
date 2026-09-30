@@ -29,26 +29,55 @@ app.get("/", (req, res) => {
   res.json({ message: "Auth API is running live!" });
 });
 
-// 2. Sign Up
+// 2. Sign Up (Updated with Email, Mobile, Gender, and Terms)
 app.post("/signup", async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: "Username and password are required" });
+  const { username, password, email, mobile, gender, acceptedTerms } = req.body;
+
+  // Basic presence validation
+  if (!username || !password || !email || !mobile || !gender) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  // Checkbox: Terms and conditions validation
+  if (acceptedTerms !== true) {
+    return res.status(400).json({ error: "You must accept the terms and conditions" });
+  }
+
+  // Radio button: Gender validation
+  const genderLower = gender.toLowerCase();
+  if (!['male', 'female'].includes(genderLower)) {
+    return res.status(400).json({ error: "Gender must be 'male' or 'female'" });
+  }
+
+  // Regex: 10-digit mobile number validation
+  if (!/^\d{10}$/.test(mobile)) {
+    return res.status(400).json({ error: "Mobile number must be exactly 10 digits" });
+  }
+
+  // Regex: Basic email validation
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ error: "Invalid email format" });
   }
 
   try {
+    // Check if Username, Email, or Mobile already exists
     const [existing] = await pool.query(
-      "SELECT ID FROM USERS WHERE USERNAME = ?",
-      [username]
+      "SELECT USERNAME, EMAIL, MOBILE FROM USERS WHERE USERNAME = ? OR EMAIL = ? OR MOBILE = ?",
+      [username, email, mobile]
     );
+
     if (existing.length > 0) {
-      return res.status(409).json({ error: "Username already taken" });
+      const duplicate = existing[0];
+      if (duplicate.USERNAME === username) return res.status(409).json({ error: "Username already taken" });
+      if (duplicate.EMAIL === email) return res.status(409).json({ error: "Email already registered" });
+      if (duplicate.MOBILE === mobile) return res.status(409).json({ error: "Mobile number already registered" });
     }
 
+    // Hash password and insert all data
     const hashedPassword = await bcrypt.hash(password, 10);
     const [result] = await pool.query(
-      "INSERT INTO USERS (USERNAME, PASSWORD) VALUES (?, ?)",
-      [username, hashedPassword]
+      "INSERT INTO USERS (USERNAME, EMAIL, MOBILE, GENDER, ACCEPTED_TERMS, PASSWORD) VALUES (?, ?, ?, ?, ?, ?)",
+      [username, email, mobile, genderLower, acceptedTerms, hashedPassword]
     );
 
     res.status(201).json({
@@ -97,13 +126,13 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// 4. Get Single User by ID (Excludes Password Hash)
+// 4. Get Single User by ID (Updated to return new fields)
 app.get("/users/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
     const [rows] = await pool.query(
-      "SELECT ID, USERNAME FROM USERS WHERE ID = ?",
+      "SELECT ID, USERNAME, EMAIL, MOBILE, GENDER FROM USERS WHERE ID = ?",
       [id]
     );
 
