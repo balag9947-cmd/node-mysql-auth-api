@@ -82,7 +82,14 @@ app.post("/signup", async (req, res) => {
 
     res.status(201).json({
       message: "User registered successfully",
-      userId: result.insertId
+      userId: result.insertId,
+      createdData: {
+        username: username,
+        email: email,
+        mobile: mobile,
+        gender: genderLower,
+        password_used: password // Included for your local testing purposes
+      }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -256,7 +263,6 @@ app.patch("/users/:id", async (req, res) => {
   const { id } = req.params;
   const { email, mobile, gender } = req.body;
 
-  // Ensure at least one field is provided
   if (!email && !mobile && !gender) {
     return res.status(400).json({ error: "Please provide email, mobile, or gender to update" });
   }
@@ -284,7 +290,6 @@ app.patch("/users/:id", async (req, res) => {
   }
 
   try {
-    // Check if new email/mobile collides with a DIFFERENT user
     if (email || mobile) {
       const [existing] = await pool.query(
         "SELECT EMAIL, MOBILE FROM USERS WHERE (EMAIL = ? OR MOBILE = ?) AND ID != ?",
@@ -295,7 +300,6 @@ app.patch("/users/:id", async (req, res) => {
       }
     }
 
-    // Add the user ID to the end of the values array for the WHERE clause
     values.push(id);
     const query = `UPDATE USERS SET ${updates.join(", ")} WHERE ID = ?`;
     
@@ -310,12 +314,12 @@ app.patch("/users/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 // 9. PUT: Replace entire user profile (Full Update)
 app.put("/users/:id", async (req, res) => {
   const { id } = req.params;
   const { username, email, mobile, gender, acceptedTerms } = req.body;
 
-  // PUT requires ALL fields
   if (!username || !email || !mobile || !gender || acceptedTerms === undefined) {
     return res.status(400).json({ error: "PUT requires all fields: username, email, mobile, gender, acceptedTerms" });
   }
@@ -326,7 +330,6 @@ app.put("/users/:id", async (req, res) => {
   if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: "Invalid email" });
 
   try {
-    // Check if the new data collides with a DIFFERENT user
     const [existing] = await pool.query(
       "SELECT USERNAME, EMAIL, MOBILE FROM USERS WHERE (USERNAME = ? OR EMAIL = ? OR MOBILE = ?) AND ID != ?",
       [username, email, mobile, id]
@@ -349,6 +352,18 @@ app.put("/users/:id", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// 10. Logout (New Endpoint)
+app.post("/logout", (req, res) => {
+  // Optional: Extract token from header if you want to verify it before logging out
+  const authHeader = req.headers["authorization"];
+  
+  // Since JWT is stateless, logout is handled client-side by deleting the token.
+  // This endpoint serves as a clean confirmation response for API test suites.
+  res.json({
+    message: "Logged out successfully. Please clear your token on the client side."
+  });
 });
 
 // Dynamic Port for Render
